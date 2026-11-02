@@ -21,19 +21,24 @@ def health_check():
 async def upload_dataset(file: UploadFile = File(...)):
     """Read and store a CSV upload."""
     if Path(file.filename or "").suffix.lower() != ".csv":
-        logger.warning("Attempted to upload non-CSV file: %s", file.filename)
+        extension = Path(file.filename or "").suffix.lower()
+        logger.warning("Unsupported file format: %s", extension)
         raise HTTPException(status_code=400, detail="Only CSV files are supported.")
     contents = await file.read()
     try:
         df = pd.read_csv(io.BytesIO(contents))
     except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as e:
-        logger.warning("Failed to read CSV file: %s", file.filename)
+        logger.warning("Failed to read CSV file %s: %s", file.filename, e)
         raise HTTPException(status_code=400, detail=f"Failed to read CSV file: {e}")
 
     dataset_id = storage.save(df, file.filename)
     metadata = storage.get_metadata(dataset_id)
     logger.info("Uploaded dataset: id=%s, filename=%s, rows=%s", dataset_id, file.filename, len(df))
-        
+
+    if metadata is None:
+        logger.error("Could not retrieve metadata for uploaded dataset: id=%s", dataset_id)
+        raise HTTPException(status_code=500, detail="Could not retrieve dataset metadata.")
+
     return metadata
 
 @app.get("/datasets/{dataset_id}")
@@ -41,7 +46,7 @@ def get_dataset(dataset_id: int, limit: int = Query(default=100, ge=1)):
     """Return up to limit rows from a stored dataset."""
     df = storage.get(dataset_id)
     if df is None:
-        logger.warning("Dataset not found: id=%s", dataset_id)
+        logger.warning("Dataset not found: %s", dataset_id)
         raise HTTPException(status_code=404, detail="Dataset not found.")
     total_rows = len(df)
     records = json.loads(df.head(limit).to_json(orient="records"))

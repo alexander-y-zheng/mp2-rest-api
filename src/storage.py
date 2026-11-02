@@ -32,13 +32,19 @@ class DatasetStorage:
         """Return the dataset metadata, or None."""
         if dataset_id in self._store:
             df = self._store[dataset_id]["df"]
-            return {
+            metadata = {
                 "id": dataset_id,
                 "filename": self._store[dataset_id]["filename"],
                 "rows": df.shape[0],
                 "columns": df.shape[1],
                 "column_names": list(df.columns)
             }
+            logger.debug(
+                "Retrieved dataset metadata: id=%s, rows=%s",
+                dataset_id,
+                metadata["rows"],
+            )
+            return metadata
         logger.debug("Metadata requested for missing dataset: id=%s", dataset_id)
         return None
 
